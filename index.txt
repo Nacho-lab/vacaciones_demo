@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEMO - Vacaciones Adarsa</title>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+        .fc-day-sun, .fc-day-sat { background-color: #fff1f2 !important; }
+        .sidebar { height: 100vh; overflow-y: auto; }
+        #mainApp { display: none; }
+        .active-user { border-left: 4px solid #ef4444; background: #fef2f2; }
+        
+        .demo-badge {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ef4444;
+            color: white;
+            padding: 4px 20px;
+            border-radius: 20px;
+            font-weight: 900;
+            font-size: 10px;
+            letter-spacing: 2px;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        #localModeWarning {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #f59e0b;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        .fc-event { border: none !important; margin: 1px 2px !important; border-radius: 4px !important; cursor: pointer; }
+        .fc-event-main { padding: 2px 6px !important; font-weight: 800 !important; font-size: 0.65rem !important; text-transform: uppercase; }
+        
+        #toast { position: fixed; top: 20px; right: 20px; z-index: 2000; transform: translateY(-100px); transition: all 0.4s; }
+        #toast.show { transform: translateY(0); }
+        
+        .progress-bar-bg { background-color: #e2e8f0; height: 4px; border-radius: 2px; overflow: hidden; margin-top: 4px; width: 100%; }
+        .progress-bar-fill { height: 100%; transition: width 0.5s ease-out; }
+    </style>
+</head>
+<body>
+
+    <div class="demo-badge">MODO PRUEBAS / DEMO</div>
+    <div id="localModeWarning">⚠️ TABLA NO ENCONTRADA: USANDO MODO LOCAL (DATOS EN NAVEGADOR)</div>
+
+    <div id="toast" class="bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3">
+        <span id="toastMsg"></span>
+    </div>
+
+    <div id="loginScreen" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center border-t-8 border-red-500">
+            <h1 class="text-2xl font-black text-slate-800 mb-2 italic tracking-tighter text-red-600">ENTORNO DE PRUEBAS</h1>
+            <p class="text-slate-500 mb-6 text-xs uppercase font-bold">Usa "admin" y "metal2026"</p>
+            <div class="space-y-4">
+                <input type="text" id="user" placeholder="Usuario" class="w-full px-4 py-3 border-2 rounded-xl outline-none focus:border-red-500">
+                <input type="password" id="pass" placeholder="Contraseña" class="w-full px-4 py-3 border-2 rounded-xl outline-none focus:border-red-500">
+                <button onclick="handleLogin()" class="w-full bg-red-600 text-white py-3 rounded-xl font-black hover:bg-red-700 transition transform active:scale-95 uppercase">ENTRAR A PRUEBAS</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainApp" class="grid grid-cols-1 md:grid-cols-[300px_1fr] h-screen">
+        <aside class="sidebar bg-white border-r p-6 flex flex-col shadow-xl z-20">
+            <div class="mb-8 border-b pb-4 text-center md:text-left">
+                <h2 class="text-xl font-black text-slate-800 italic">DEMO TEST</h2>
+                <p class="text-[10px] text-red-500 font-black uppercase tracking-[0.2em]">Tabla: vacaciones_demo</p>
+            </div>
+            
+            <div id="groupsContainer" class="space-y-6 flex-grow">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">ADMINISTRACIÓN</label>
+                    <div id="list-admin" class="space-y-1"></div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">TALLER</label>
+                    <div id="list-taller" class="space-y-1"></div>
+                </div>
+            </div>
+
+            <div class="mt-auto pt-6">
+                <button onclick="clearDemoTable()" class="w-full py-4 bg-red-50 text-red-600 border-2 border-dashed border-red-200 rounded-xl font-black text-[10px] uppercase hover:bg-red-100 transition-all">
+                    Resetear Datos Demo
+                </button>
+            </div>
+        </aside>
+
+        <main id="mainContent" class="overflow-y-auto bg-slate-50">
+            <header class="p-6 border-b bg-white flex flex-col md:flex-row justify-between items-center sticky top-0 z-10 shadow-sm gap-4">
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center bg-slate-100 p-1.5 rounded-2xl gap-2">
+                        <button onclick="navYear(-1)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white border text-slate-400 hover:text-red-500 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg>
+                        </button>
+                        <div class="px-6 text-center">
+                            <span id="displayYear" class="text-xl font-black text-slate-800 italic">2026</span>
+                        </div>
+                        <button onclick="navYear(1)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white border text-slate-400 hover:text-red-500 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg>
+                        </button>
+                    </div>
+                    <h3 id="currentUserTitle" class="font-black text-2xl text-slate-800 italic uppercase tracking-tighter">SELECCIONA USUARIO</h3>
+                </div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-4 py-2 rounded-lg">
+                    Cupo Máximo: 2 personas/día
+                </div>
+            </header>
+            
+            <div class="p-8">
+                <div id="calendar" class="bg-white p-6 rounded-3xl shadow-xl border border-slate-200 max-w-6xl mx-auto mb-12"></div>
+                
+                <div id="registrosContainer" class="hidden max-w-6xl mx-auto">
+                    <div class="bg-white border rounded-2xl overflow-hidden shadow-sm">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-black border-b">
+                                <tr>
+                                    <th class="p-4">Periodo Registrado</th>
+                                    <th class="p-4 text-center">Días</th>
+                                    <th class="p-4 text-right">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal para Añadir -->
+    <div id="modal" class="fixed inset-0 bg-slate-900/90 hidden items-center justify-center z-[100] backdrop-blur-md">
+        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-sm mx-4 text-center">
+            <h4 class="text-2xl font-black text-red-600 mb-2 italic uppercase">Añadir Vacaciones</h4>
+            <p id="selectedDatesLabel" class="text-[10px] font-bold text-slate-400 mb-6"></p>
+            <div class="space-y-4">
+                <button onclick="saveSelection(1.0)" class="w-full p-5 bg-red-600 text-white rounded-2xl font-black text-lg shadow-xl hover:bg-red-700 transition-all active:scale-95">Día Completo</button>
+                <button onclick="saveSelection(0.5)" class="w-full p-5 border-2 border-red-600 text-red-600 rounded-2xl font-black text-lg hover:bg-red-50 transition-all active:scale-95">Media Jornada</button>
+            </div>
+            <button onclick="closeModal()" class="mt-8 text-slate-400 text-[10px] font-black uppercase hover:text-slate-600">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Modal para Borrar (Toggle) -->
+    <div id="deleteModal" class="fixed inset-0 bg-slate-900/90 hidden items-center justify-center z-[100] backdrop-blur-md">
+        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-sm mx-4 text-center">
+            <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            </div>
+            <h4 class="text-2xl font-black text-slate-800 mb-2 italic uppercase">Borrar Vacaciones</h4>
+            <p class="text-xs text-slate-500 mb-8 font-medium italic">Este periodo ya está reservado por ti. ¿Deseas eliminarlo?</p>
+            <button id="confirmDeleteBtn" class="w-full p-5 bg-red-600 text-white rounded-2xl font-black text-lg shadow-xl hover:bg-red-700 transition-all active:scale-95 mb-4 italic uppercase">SÍ, BORRAR SELECCIÓN</button>
+            <button onclick="closeModal()" class="text-slate-400 text-[10px] font-black uppercase hover:text-slate-600">No, mantener</button>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://ibsztkfrkumibvllxhqn.supabase.co"; 
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlic3p0a2Zya3VtaWJ2bGx4aHFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NzYxMTYsImV4cCI6MjA4NzQ1MjExNn0.igRwNr_mNV4NVWlo_DzpFZ3jbnMPvqmhlX7FRbs4bKs"; 
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        const TABLE_NAME = 'vacaciones_demo'; 
+        const MAX_RESOURCES_PER_DAY = 2;
+
+        let calendar, selectedRange, currentUser, vacacionesData = [];
+        let currentYear = 2026; 
+        let isLocalMode = false;
+
+        const employeeConfig = {
+            "User Test 1": { color: "#10b981", grupo: "admin" },
+            "User Test 2": { color: "#3b82f6", grupo: "admin" },
+            "Mecánico A": { color: "#f97316", grupo: "taller" },
+            "Mecánico B": { color: "#06b6d4", grupo: "taller" }
+        };
+
+        const employees = Object.keys(employeeConfig);
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 4000);
+        }
+
+        function handleLogin() {
+            const userIn = document.getElementById('user').value.trim().toLowerCase();
+            const passIn = document.getElementById('pass').value.trim();
+            if(userIn === 'admin' && passIn === 'metal2026') {
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('mainApp').style.display = 'grid';
+                initApp();
+            } else {
+                showToast("Credenciales de Demo incorrectas");
+            }
+        }
+
+        async function initApp() {
+            initCalendar();
+            await fetchData();
+        }
+
+        async function fetchData() {
+            const { data, error } = await supabaseClient.from(TABLE_NAME).select('*');
+            
+            if(error && (error.code === "PGRST205" || error.message.includes("not found"))) {
+                isLocalMode = true;
+                document.getElementById('localModeWarning').style.display = 'block';
+                const localData = localStorage.getItem('vacaciones_demo_local');
+                vacacionesData = localData ? JSON.parse(localData) : [];
+            } else if (error) {
+                console.error("Error de Supabase:", error);
+                showToast("Error de conexión");
+            } else {
+                isLocalMode = false;
+                document.getElementById('localModeWarning').style.display = 'none';
+                vacacionesData = data || [];
+            }
+
+            updateCalendarEvents();
+            renderUserList();
+            if(currentUser) renderTable();
+        }
+
+        function initCalendar() {
+            calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+                initialView: 'multiMonthYear',
+                initialDate: `${currentYear}-01-01`,
+                locale: 'es',
+                firstDay: 1,
+                selectable: true,
+                headerToolbar: false,
+                select: (info) => {
+                    if(!currentUser) {
+                        showToast("Selecciona un empleado primero");
+                        calendar.unselect();
+                        return;
+                    }
+
+                    selectedRange = info;
+                    const startSelected = new Date(info.startStr);
+                    
+                    // LÓGICA DE TOGGLE: ¿Hay un registro del usuario actual que coincida con este día?
+                    // Buscamos cualquier registro del usuario activo que cubra al menos una de las fechas seleccionadas
+                    const overlappingRecord = vacacionesData.find(v => {
+                        if (v.empleado !== currentUser) return false;
+                        
+                        const recordStart = new Date(v.fecha_inicio);
+                        const recordEnd = new Date(v.fecha_fin);
+                        const selStart = new Date(info.start);
+                        const selEnd = new Date(info.end);
+                        selEnd.setDate(selEnd.getDate() - 1); // Ajuste fin de FullCalendar
+
+                        // Si hay solapamiento entre el rango del registro y el rango seleccionado
+                        return (selStart <= recordEnd && selEnd >= recordStart);
+                    });
+
+                    if (overlappingRecord) {
+                        // Si ya existe registro, mostramos el modal de borrado en lugar del de añadir
+                        document.getElementById('confirmDeleteBtn').onclick = () => deleteRecord(overlappingRecord.id);
+                        document.getElementById('deleteModal').style.display = 'flex';
+                    } else {
+                        // Si no existe, procedemos a añadir
+                        const fFinShow = new Date(info.end);
+                        fFinShow.setDate(fFinShow.getDate() - 1);
+                        const fFinStr = fFinShow.toISOString().split('T')[0];
+                        
+                        document.getElementById('selectedDatesLabel').innerText = `${info.startStr} hasta ${fFinStr}`;
+                        document.getElementById('modal').style.display = 'flex';
+                    }
+                }
+            });
+            calendar.render();
+        }
+
+        function updateCalendarEvents() {
+            calendar.removeAllEvents();
+            const events = vacacionesData.map(v => {
+                const endDate = new Date(v.fecha_fin);
+                endDate.setDate(endDate.getDate() + 1);
+                
+                return {
+                    id: v.id.toString(),
+                    title: v.empleado.split(' ')[0],
+                    start: v.fecha_inicio, 
+                    end: endDate.toISOString().split('T')[0],
+                    backgroundColor: employeeConfig[v.empleado]?.color || '#94a3b8',
+                    allDay: true
+                };
+            });
+            calendar.addEventSource(events);
+        }
+
+        async function saveSelection(factor) {
+            const fInicioStr = selectedRange.startStr.split('T')[0];
+            const fFinDate = new Date(selectedRange.end);
+            fFinDate.setDate(fFinDate.getDate() - 1);
+            const fFinStr = fFinDate.toISOString().split('T')[0];
+
+            // VALIDACIÓN DE CUPO MÁXIMO
+            let currCheck = new Date(selectedRange.start);
+            const endCheck = new Date(selectedRange.end);
+            let dayViolated = null;
+
+            while(currCheck < endCheck) {
+                const dateToCheck = currCheck.toISOString().split('T')[0];
+                const count = vacacionesData.filter(v => {
+                    const dStart = new Date(v.fecha_inicio);
+                    const dEnd = new Date(v.fecha_fin);
+                    const dCheck = new Date(dateToCheck);
+                    return dCheck >= dStart && dCheck <= dEnd;
+                }).length;
+
+                if (count >= MAX_RESOURCES_PER_DAY) {
+                    dayViolated = dateToCheck;
+                    break;
+                }
+                currCheck.setDate(currCheck.getDate() + 1);
+            }
+
+            if (dayViolated) {
+                showToast(`⚠️ CUPO LLENO: El día ${dayViolated} ya tiene ${MAX_RESOURCES_PER_DAY} recursos.`);
+                closeModal();
+                return;
+            }
+
+            let days = 0; 
+            let curr = new Date(selectedRange.start);
+            const end = new Date(selectedRange.end);
+            while(curr < end) {
+                if(curr.getDay() !== 0 && curr.getDay() !== 6) days += factor;
+                curr.setDate(curr.getDate() + 1);
+            }
+
+            if(days <= 0) {
+                showToast("Días no laborables");
+                closeModal();
+                return;
+            }
+
+            const record = { empleado: currentUser, fecha_inicio: fInicioStr, fecha_fin: fFinStr, dias: days };
+
+            if(isLocalMode) {
+                record.id = Date.now().toString();
+                vacacionesData.push(record);
+                localStorage.setItem('vacaciones_demo_local', JSON.stringify(vacacionesData));
+            } else {
+                const { error } = await supabaseClient.from(TABLE_NAME).insert([record]);
+                if(error) { showToast("Error al grabar"); return; }
+            }
+
+            await fetchData(); 
+            closeModal();
+            showToast("Registro guardado");
+        }
+
+        function renderUserList() {
+            ['list-admin', 'list-taller'].forEach(id => document.getElementById(id).innerHTML = '');
+            employees.forEach(name => {
+                const used = vacacionesData.filter(v => v.empleado === name).reduce((s,v)=>s+v.dias,0);
+                const html = `
+                    <div onclick="selectUser('${name}')" class="p-3 rounded-xl cursor-pointer transition-all ${currentUser === name ? 'active-user' : 'hover:bg-slate-50'}">
+                        <div class="flex justify-between items-center text-xs font-bold">
+                            <span>${name}</span><span>${used.toFixed(1)}/25</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${(used/25)*100}%; background:${employeeConfig[name].color}"></div></div>
+                    </div>`;
+                document.getElementById(`list-${employeeConfig[name].grupo}`).innerHTML += html;
+            });
+        }
+
+        function selectUser(name) {
+            currentUser = name;
+            document.getElementById('currentUserTitle').innerText = name;
+            document.getElementById('registrosContainer').classList.remove('hidden');
+            renderUserList(); 
+            renderTable();
+        }
+
+        function renderTable() {
+            const filtered = vacacionesData.filter(v => v.empleado === currentUser);
+            document.getElementById('tableBody').innerHTML = filtered.map(v => `
+                <tr class="border-b hover:bg-slate-50 transition-colors">
+                    <td class="p-4 text-xs font-bold text-slate-600 uppercase tracking-tight">${v.fecha_inicio} <span class="text-slate-300 mx-2">→</span> ${v.fecha_fin}</td>
+                    <td class="p-4 text-center font-black text-red-600">${v.dias}d</td>
+                    <td class="p-4 text-right">
+                        <button onclick="deleteRecord('${v.id}')" class="bg-red-50 text-red-500 px-3 py-1 rounded-lg text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all">Borrar</button>
+                    </td>
+                </tr>`).join('');
+        }
+
+        async function deleteRecord(id) {
+            if(isLocalMode) {
+                vacacionesData = vacacionesData.filter(v => v.id.toString() !== id.toString());
+                localStorage.setItem('vacaciones_demo_local', JSON.stringify(vacacionesData));
+            } else {
+                const { error } = await supabaseClient.from(TABLE_NAME).delete().eq('id', id);
+                if(error) { showToast("Error al borrar"); return; }
+            }
+            await fetchData();
+            closeModal();
+            showToast("Registro eliminado");
+        }
+
+        async function clearDemoTable() {
+            if(confirm("¿Borrar todos los datos de prueba?")) {
+                if(isLocalMode) { localStorage.removeItem('vacaciones_demo_local'); }
+                else { await supabaseClient.from(TABLE_NAME).delete().neq('empleado', 'SISTEMA_RESERVADO'); }
+                vacacionesData = [];
+                await fetchData();
+                showToast("Datos reseteados");
+            }
+        }
+
+        function navYear(offset) {
+            currentYear += offset;
+            document.getElementById('displayYear').innerText = currentYear;
+            calendar.gotoDate(`${currentYear}-01-01`);
+            fetchData();
+        }
+
+        function closeModal() { 
+            document.getElementById('modal').style.display = 'none'; 
+            document.getElementById('deleteModal').style.display = 'none'; 
+            calendar.unselect(); 
+        }
+    </script>
+</body>
+</html>

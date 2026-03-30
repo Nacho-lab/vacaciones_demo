@@ -2,89 +2,115 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>DEMO | Vacaciones Adarsa</title>
     <!-- Librerías Externas -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Popper y Tippy para los Tooltips -->
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/animations/shift-away.css">
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #f8fafc; overflow: hidden; }
         
-        /* Ajustes de Calendario */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #f8fafc; 
+            overflow: hidden; 
+            touch-action: manipulation; /* Mejora respuesta táctil */
+        }
+        
+        /* Ajustes de Calendario para mejor visualización en móvil */
         .fc-day-sun, .fc-day-sat { background-color: #fff1f2 !important; }
         .fc-event { 
             border: none !important; 
             margin: 1px 0 !important; 
             border-radius: 4px !important; 
-            cursor: pointer;
             padding: 2px 4px !important;
-            transition: transform 0.1s ease;
         }
-        .fc-event:hover { transform: scale(1.02); filter: brightness(1.1); }
         .fc-event-main { 
             font-weight: 700 !important; 
-            font-size: 0.65rem !important; 
+            font-size: 0.6rem !important; 
             color: white !important;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
-        .fc-daygrid-event-harness { margin-bottom: 1px !important; }
-        .fc-daygrid-day-frame { min-height: 90px !important; }
-
-        /* Estilo Tooltip Personalizado */
-        .tippy-box[data-theme~='adarsa'] {
-            background-color: #0f172a;
-            color: white;
-            font-weight: 700;
-            font-size: 11px;
-            border-radius: 8px;
-            padding: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        
+        /* Sidebar Responsive */
+        #sidebar {
+            transition: transform 0.3s ease-in-out;
+            z-index: 100;
+        }
+        @media (max-width: 768px) {
+            #sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                bottom: 0;
+                width: 280px;
+                transform: translateX(-100%);
+                box-shadow: 20px 0 50px rgba(0,0,0,0.1);
+            }
+            #sidebar.open { transform: translateX(0); }
+            .fc-toolbar-title { font-size: 1.1rem !important; }
         }
 
-        #toast { position: fixed; top: 20px; right: 20px; z-index: 2000; transform: translateY(-150%); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #sidebarOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 90;
+        }
+        #sidebarOverlay.show { display: block; }
+
+        #toast { position: fixed; top: 20px; right: 20px; left: 20px; md:left: auto; z-index: 2000; transform: translateY(-150%); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         #toast.show { transform: translateY(0); }
-        .progress-bar-bg { background-color: #e2e8f0; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px; }
-        .progress-bar-fill { height: 100%; transition: width 0.5s ease; }
-        .type-btn { @apply flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-slate-100 transition-all active:scale-95 bg-white hover:border-blue-200; }
+        
+        .type-btn { @apply flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-slate-100 transition-all active:scale-90 bg-white; }
         .type-btn-active { @apply border-blue-600 bg-blue-50 ring-4 ring-blue-100; }
         .active-user { border-left: 4px solid #3b82f6; background: #eff6ff; }
+        
+        /* Ajuste para que los días sean más clicables */
+        .fc-daygrid-day { cursor: pointer; }
+        .fc-daygrid-day:active { background-color: #f1f5f9; }
     </style>
 </head>
 <body>
 
     <div id="toast" class="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 border border-slate-700">
         <div id="toastIndicator" class="w-2 h-2 rounded-full bg-blue-500"></div>
-        <span id="toastMsg"></span>
+        <span id="toastMsg" class="flex-1 text-center"></span>
     </div>
 
     <!-- Pantalla de Login -->
-    <div id="loginScreen" class="fixed inset-0 bg-slate-950 flex items-center justify-center z-50 p-4">
-        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center">
-            <h1 class="text-3xl font-black text-slate-900 mb-2 italic uppercase">ADARSA</h1>
+    <div id="loginScreen" class="fixed inset-0 bg-slate-950 flex items-center justify-center z-[200] p-6">
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-sm text-center border border-slate-800">
+            <h1 class="text-3xl font-black text-slate-900 mb-6 italic uppercase">ADARSA</h1>
             <div class="space-y-4">
-                <input type="text" id="user" value="admin" class="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 transition-all font-medium">
-                <input type="password" id="pass" value="metal2026" class="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 transition-all font-medium">
-                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black hover:bg-blue-700 transition transform active:scale-95 uppercase tracking-widest">Entrar</button>
+                <input type="text" id="user" value="admin" class="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 transition-all font-medium" placeholder="Usuario">
+                <input type="password" id="pass" value="metal2026" class="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 transition-all font-medium" placeholder="Contraseña">
+                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black active:scale-95 transition-transform uppercase tracking-widest">Entrar</button>
             </div>
         </div>
     </div>
 
-    <div id="mainApp" class="hidden grid-cols-1 md:grid-cols-[300px_1fr] h-screen">
-        <aside class="bg-white border-r border-slate-200 p-6 flex flex-col overflow-y-auto">
-            <div class="mb-8">
-                <h2 class="text-2xl font-black text-slate-900 italic">ADARSA</h2>
-                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Torrelavega 2026</p>
+    <div id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <div id="mainApp" class="hidden h-screen flex flex-col md:flex-row overflow-hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="bg-white border-r border-slate-200 p-6 flex flex-col overflow-y-auto shrink-0">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h2 class="text-2xl font-black text-slate-900 italic">ADARSA</h2>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Torrelavega 2026</p>
+                </div>
+                <button onclick="toggleSidebar()" class="md:hidden p-2 bg-slate-100 rounded-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
             </div>
+            
             <div class="space-y-6 flex-grow">
                 <div>
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">ADMINISTRACIÓN</label>
@@ -95,32 +121,35 @@
                     <div id="list-taller" class="space-y-1"></div>
                 </div>
             </div>
-            <button onclick="toggleModoFestivos()" id="btnFestivos" class="mt-6 w-full py-3 border-2 border-red-100 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-50 transition-all">Configurar Festivos</button>
+            <button onclick="toggleModoFestivos()" id="btnFestivos" class="mt-6 w-full py-4 border-2 border-red-100 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:bg-red-50">Configurar Festivos</button>
         </aside>
 
-        <main class="overflow-y-auto bg-slate-50 flex flex-col">
-            <header class="p-6 bg-white border-b border-slate-200 flex justify-between items-center sticky top-0 z-30">
-                <div class="flex items-center gap-6">
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden bg-slate-50">
+            <header class="bg-white border-b border-slate-200 px-4 py-3 md:px-6 md:py-4 flex justify-between items-center z-40 sticky top-0">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="md:hidden p-2 bg-slate-100 rounded-xl active:scale-90 transition-transform">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
                     <div class="flex items-center bg-slate-100 p-1 rounded-xl">
-                        <button onclick="navYear(-1)" class="p-2 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
-                        <span id="displayYear" class="px-4 font-black text-lg italic">2026</span>
-                        <button onclick="navYear(1)" class="p-2 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+                        <button onclick="navYear(-1)" class="p-2 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+                        <span id="displayYear" class="px-2 md:px-4 font-black text-sm md:text-lg italic">2026</span>
+                        <button onclick="navYear(1)" class="p-2 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
                     </div>
-                    <h3 id="currentUserTitle" class="font-black text-xl text-slate-800 uppercase italic">Seleccione empleado</h3>
                 </div>
+                <h3 id="currentUserTitle" class="font-black text-xs md:text-xl text-slate-800 uppercase italic truncate max-w-[140px] md:max-w-none">Seleccione empleado</h3>
             </header>
             
-            <div class="p-8 flex-grow">
-                <div id="calendar" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-8"></div>
-                <div id="historial" class="hidden pb-20">
-                    <h4 class="font-black text-slate-800 text-sm uppercase mb-4 pl-2 border-l-4 border-blue-600">Historial de Registros</h4>
-                    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-50 text-slate-400 font-black uppercase tracking-widest">
+            <div class="flex-1 overflow-y-auto p-4 md:p-8">
+                <div id="calendar" class="bg-white p-2 md:p-6 rounded-3xl shadow-sm border border-slate-200 mb-8"></div>
+                <div id="historial" class="hidden pb-24">
+                    <h4 class="font-black text-slate-800 text-sm uppercase mb-4 pl-2 border-l-4 border-blue-600">Historial</h4>
+                    <div id="tableContainer" class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm overflow-x-auto text-[10px] md:text-xs">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 text-slate-400 font-black uppercase tracking-widest border-b border-slate-100">
                                 <tr>
                                     <th class="p-4">Fecha</th>
-                                    <th class="p-4">Concepto</th>
-                                    <th class="p-4">Jornada</th>
+                                    <th class="p-4">Tipo</th>
                                     <th class="p-4 text-right">Acción</th>
                                 </tr>
                             </thead>
@@ -132,21 +161,21 @@
         </main>
     </div>
 
-    <!-- Modal para tipo de registro -->
-    <div id="modal" class="fixed inset-0 bg-slate-950/80 hidden items-center justify-center z-[100] backdrop-blur-sm p-4">
-        <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-100">
+    <!-- Modal Registro -->
+    <div id="modal" class="fixed inset-0 bg-slate-950/80 hidden items-center justify-center z-[150] backdrop-blur-sm p-4">
+        <div class="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-2xl w-full max-w-sm border border-slate-100">
             <h4 class="text-xl font-black text-slate-900 mb-6 text-center uppercase italic">Tipo de Registro</h4>
-            <div class="grid grid-cols-2 gap-3 mb-8">
-                <button onclick="selectType('vacaciones')" id="btn-vacaciones" class="type-btn"><span class="text-lg">🏖️</span><span class="text-[10px] font-black uppercase mt-1">Vacaciones</span></button>
-                <button onclick="selectType('baja')" id="btn-baja" class="type-btn"><span class="text-lg">🤒</span><span class="text-[10px] font-black uppercase mt-1">Baja</span></button>
-                <button onclick="selectType('curso')" id="btn-curso" class="type-btn"><span class="text-lg">📚</span><span class="text-[10px] font-black uppercase mt-1">Curso</span></button>
-                <button onclick="selectType('otros')" id="btn-otros" class="type-btn"><span class="text-lg">📝</span><span class="text-[10px] font-black uppercase mt-1">Otros</span></button>
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <button onclick="selectType('vacaciones')" id="btn-vacaciones" class="type-btn"><span class="text-2xl">🏖️</span><span class="text-[9px] font-black uppercase mt-1">Vacaciones</span></button>
+                <button onclick="selectType('baja')" id="btn-baja" class="type-btn"><span class="text-2xl">🤒</span><span class="text-[9px] font-black uppercase mt-1">Baja</span></button>
+                <button onclick="selectType('curso')" id="btn-curso" class="type-btn"><span class="text-2xl">📚</span><span class="text-[9px] font-black uppercase mt-1">Curso</span></button>
+                <button onclick="selectType('otros')" id="btn-otros" class="type-btn"><span class="text-2xl">📝</span><span class="text-[9px] font-black uppercase mt-1">Otros</span></button>
             </div>
-            <div id="confirmActions" class="space-y-3 hidden">
-                <button onclick="confirmSave(1.0)" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase hover:bg-black transition-all">Día Completo</button>
-                <button onclick="confirmSave(0.5)" class="w-full py-4 border-2 border-slate-100 text-slate-900 rounded-2xl font-black text-sm uppercase hover:bg-slate-50 transition-all">Media Jornada</button>
+            <div id="confirmActions" class="space-y-2 hidden">
+                <button onclick="confirmSave(1.0)" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase active:scale-95 transition-transform">Día Completo</button>
+                <button onclick="confirmSave(0.5)" class="w-full py-4 border-2 border-slate-100 text-slate-900 rounded-2xl font-black text-xs uppercase active:bg-slate-50">Media Jornada</button>
             </div>
-            <button onclick="closeModal()" class="w-full mt-6 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Cancelar</button>
+            <button onclick="closeModal()" class="w-full mt-6 text-slate-400 text-[10px] font-black uppercase tracking-widest">Cerrar</button>
         </div>
     </div>
 
@@ -167,38 +196,44 @@
             "Jorge Barreda": { color: "#f43f5e", grupo: "taller" }
         };
 
-        const typeColors = {
-            vacaciones: "#3b82f6", baja: "#64748b", curso: "#8b5cf6", otros: "#0ea5e9", festivo: "#ef4444"
-        };
-
+        const typeColors = { vacaciones: "#3b82f6", baja: "#64748b", curso: "#8b5cf6", otros: "#0ea5e9", festivo: "#ef4444" };
         const typeEmojis = { vacaciones: '🏖️', baja: '🤒', curso: '📚', otros: '📝', festivo: '🚩' };
 
         function showToast(msg, isError = false) {
             const t = document.getElementById('toast');
-            if (!t) return;
             document.getElementById('toastMsg').innerText = msg;
             document.getElementById('toastIndicator').className = isError ? 'w-2 h-2 rounded-full bg-red-500' : 'w-2 h-2 rounded-full bg-blue-500';
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 3000);
         }
 
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const ov = document.getElementById('sidebarOverlay');
+            sb.classList.toggle('open');
+            ov.classList.toggle('show');
+        }
+
         function handleLogin() {
             document.getElementById('loginScreen').classList.add('hidden');
-            const main = document.getElementById('mainApp');
-            main.classList.remove('hidden');
-            main.classList.add('grid');
+            document.getElementById('mainApp').classList.remove('hidden');
             initApp();
         }
 
         async function initApp() {
+            const isMobile = window.innerWidth < 768;
             calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
-                initialView: 'multiMonthYear',
+                initialView: isMobile ? 'dayGridMonth' : 'multiMonthYear',
                 initialDate: `${currentYear}-01-01`,
                 locale: 'es',
                 firstDay: 1,
+                height: 'auto',
                 selectable: true,
-                headerToolbar: false,
-                dayMaxEvents: false,
+                unselectAuto: false,
+                longPressDelay: 0, // CRÍTICO: Selección instantánea en móvil
+                selectLongPressDelay: 0,
+                headerToolbar: isMobile ? { left: 'prev,next', center: 'title', right: '' } : false,
+                dayMaxEvents: isMobile ? 2 : true,
                 select: (info) => {
                     const target = modoFestivos ? 'FESTIVO' : currentUser;
                     if(!target) { calendar.unselect(); showToast("Seleccione empleado", true); return; }
@@ -206,15 +241,8 @@
                     if(modoFestivos) { selectedType = 'festivo'; confirmSave(0); } 
                     else { resetModal(); document.getElementById('modal').style.display = 'flex'; }
                 },
-                eventDidMount: function(info) {
-                    const tooltipContent = info.event.extendedProps.description;
-                    tippy(info.el, {
-                        content: tooltipContent,
-                        theme: 'adarsa',
-                        animation: 'shift-away',
-                        placement: 'top',
-                        allowHTML: true
-                    });
+                eventDidMount: (info) => {
+                    tippy(info.el, { content: info.event.extendedProps.description, theme: 'adarsa', allowHTML: true });
                 }
             });
             calendar.render();
@@ -234,33 +262,17 @@
         function renderEvents() {
             calendar.removeAllEvents();
             const events = vacacionesData.filter(v => v.fecha_inicio.startsWith(currentYear)).map(v => {
-                const tipo = v.tipo || 'vacaciones';
-                let color = v.empleado === 'FESTIVO' ? typeColors['festivo'] : (employeeConfig[v.empleado]?.color || typeColors[tipo]);
-                
-                const jornadaStr = v.dias === 0.5 ? ' (1/2)' : '';
-                const nameShort = v.empleado === 'FESTIVO' ? 'FESTIVO' : v.empleado.split(' ')[0];
-                
-                const description = `
-                    <div class="text-center p-1">
-                        <div class="text-[10px] opacity-70 mb-1 font-black">${v.empleado}</div>
-                        <div class="flex items-center justify-center gap-2">
-                            <span>${typeEmojis[tipo]}</span>
-                            <span class="uppercase">${tipo}</span>
-                        </div>
-                        ${v.dias === 0.5 ? '<div class="mt-1 text-blue-300 text-[8px]">MEDIA JORNADA</div>' : ''}
-                    </div>
-                `;
-
+                const t = v.tipo || 'vacaciones';
+                const color = v.empleado === 'FESTIVO' ? typeColors['festivo'] : (employeeConfig[v.empleado]?.color || typeColors[t]);
+                const nameShort = v.empleado === 'FESTIVO' ? 'FEST' : v.empleado.split(' ')[0];
                 return {
                     id: v.id,
-                    title: `${typeEmojis[tipo]} ${nameShort}${jornadaStr}`,
+                    title: `${typeEmojis[t]} ${nameShort}`,
                     start: v.fecha_inicio,
                     allDay: true,
                     backgroundColor: color,
                     borderColor: color,
-                    extendedProps: {
-                        description: description
-                    }
+                    extendedProps: { description: `<strong>${v.empleado}</strong><br>${t.toUpperCase()}` }
                 };
             });
             calendar.addEventSource(events);
@@ -270,9 +282,9 @@
             ['admin', 'taller'].forEach(g => document.getElementById(`list-${g}`).innerHTML = '');
             Object.keys(employeeConfig).forEach(name => {
                 const used = vacacionesData.filter(v => v.empleado === name && (v.tipo === 'vacaciones' || !v.tipo) && v.fecha_inicio.startsWith(currentYear)).reduce((s,v) => s + v.dias, 0);
-                const html = `<div onclick="selectUser('${name}')" class="p-3 rounded-xl cursor-pointer transition-all ${currentUser === name ? 'active-user' : 'hover:bg-slate-50'}">
+                const html = `<div onclick="selectUser('${name}')" class="p-4 rounded-xl cursor-pointer transition-all active:scale-95 ${currentUser === name ? 'active-user' : 'hover:bg-slate-50'}">
                     <div class="flex justify-between text-[10px] font-bold mb-1"><span>${name}</span><span class="text-slate-400">${used.toFixed(1)}/25</span></div>
-                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${(used/25)*100}%; background:${employeeConfig[name].color}"></div></div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="h-full transition-all duration-500" style="width:${(used/25)*100}%; background:${employeeConfig[name].color}"></div></div>
                 </div>`;
                 document.getElementById(`list-${employeeConfig[name].grupo}`).innerHTML += html;
             });
@@ -283,14 +295,15 @@
             currentUser = name;
             document.getElementById('currentUserTitle').innerText = name;
             document.getElementById('historial').classList.remove('hidden');
+            if(window.innerWidth < 768) toggleSidebar();
             renderUserList();
             renderTable();
         }
 
-        function selectType(type) {
-            selectedType = type;
+        function selectType(t) {
+            selectedType = t;
             document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('type-btn-active'));
-            document.getElementById(`btn-${type}`).classList.add('type-btn-active');
+            document.getElementById(`btn-${t}`).classList.add('type-btn-active');
             document.getElementById('confirmActions').classList.remove('hidden');
         }
 
@@ -302,20 +315,13 @@
 
         async function confirmSave(factor) {
             const target = modoFestivos ? 'FESTIVO' : currentUser;
-            const inserts = [];
-            const deletes = [];
-            const updates = [];
-            
+            const inserts = [], deletes = [], updates = [];
             let current = new Date(selectedInfo.startStr + "T00:00:00");
             let end = new Date(selectedInfo.endStr + "T00:00:00");
 
             while(current < end) {
-                const dStr = current.getFullYear() + '-' + 
-                           String(current.getMonth() + 1).padStart(2, '0') + '-' + 
-                           String(current.getDate()).padStart(2, '0');
-                           
+                const dStr = current.toISOString().split('T')[0];
                 const dayOfWeek = current.getDay();
-                
                 if(modoFestivos || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
                     const existing = vacacionesData.find(v => v.empleado === target && v.fecha_inicio === dStr);
                     if (existing) {
@@ -324,18 +330,8 @@
                     } else {
                         if(!modoFestivos && selectedType === 'vacaciones') {
                             const grupo = employeeConfig[currentUser].grupo;
-                            const compis = vacacionesData.filter(v => 
-                                v.fecha_inicio === dStr && 
-                                (v.tipo === 'vacaciones' || !v.tipo) && 
-                                v.empleado !== 'FESTIVO' && 
-                                employeeConfig[v.empleado]?.grupo === grupo
-                            ).length;
-                            
-                            if(compis >= 1) { 
-                                showToast(`Ya hay alguien de ${grupo.toUpperCase()} fuera el ${dStr}`, true); 
-                                current.setDate(current.getDate() + 1); 
-                                continue; 
-                            }
+                            const compis = vacacionesData.filter(v => v.fecha_inicio === dStr && (v.tipo === 'vacaciones' || !v.tipo) && v.empleado !== 'FESTIVO' && employeeConfig[v.empleado]?.grupo === grupo).length;
+                            if(compis >= 1) { showToast(`Tope alcanzado en ${grupo} (${dStr})`, true); current.setDate(current.getDate() + 1); continue; }
                         }
                         inserts.push({ empleado: target, fecha_inicio: dStr, fecha_fin: dStr, tipo: selectedType, dias: factor });
                     }
@@ -344,37 +340,25 @@
             }
 
             try {
-                if (deletes.length > 0) await supabaseClient.from('vacaciones_demo').delete().in('id', deletes);
-                if (updates.length > 0) {
-                    for (const u of updates) {
-                        await supabaseClient.from('vacaciones_demo').update({ tipo: u.tipo, dias: u.dias }).eq('id', u.id);
-                    }
-                }
-                if (inserts.length > 0) await supabaseClient.from('vacaciones_demo').insert(inserts);
-                
-                if (deletes.length > 0 || updates.length > 0 || inserts.length > 0) { 
-                    showToast("Sincronizado"); 
-                    await fetchData(); 
-                }
-            } catch (err) { 
-                showToast("Error de conexión", true); 
-            }
+                if (deletes.length) await supabaseClient.from('vacaciones_demo').delete().in('id', deletes);
+                for (const u of updates) await supabaseClient.from('vacaciones_demo').update({ tipo: u.tipo, dias: u.dias }).eq('id', u.id);
+                if (inserts.length) await supabaseClient.from('vacaciones_demo').insert(inserts);
+                if (deletes.length || updates.length || inserts.length) { showToast("Sincronizado"); await fetchData(); }
+            } catch (err) { showToast("Error de conexión", true); }
             closeModal();
         }
 
         function renderTable() {
             const target = modoFestivos ? 'FESTIVO' : currentUser;
             const filtered = vacacionesData.filter(v => v.empleado === target && v.fecha_inicio.startsWith(currentYear)).sort((a,b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
-            const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = filtered.length ? filtered.map(v => {
+            document.getElementById('tableBody').innerHTML = filtered.length ? filtered.map(v => {
                 const t = v.tipo || 'vacaciones';
-                return `<tr class="hover:bg-slate-50 border-b border-slate-50 last:border-0">
-                    <td class="p-4 font-bold text-slate-700">${v.fecha_inicio}</td>
-                    <td class="p-4"><span class="px-2 py-1 rounded bg-slate-100 text-[10px] font-black uppercase text-slate-500">${typeEmojis[t]} ${t}</span></td>
-                    <td class="p-4 text-slate-500">${v.dias === 0.5 ? 'Media' : (v.dias === 0 ? '-' : 'Completa')}</td>
-                    <td class="p-4 text-right"><button onclick="deleteRow('${v.id}')" class="text-red-400 font-bold hover:text-red-600">Eliminar</button></td>
+                return `<tr class="border-b border-slate-50">
+                    <td class="p-4 font-bold text-slate-700">${v.fecha_inicio.split('-').reverse().slice(0,2).join('/')}</td>
+                    <td class="p-4 text-slate-500 uppercase font-black">${typeEmojis[t]} ${t}</td>
+                    <td class="p-4 text-right"><button onclick="deleteRow('${v.id}')" class="text-red-400 active:scale-90 transition-transform px-2">✕</button></td>
                 </tr>`;
-            }).join('') : '<tr><td colspan="4" class="p-8 text-center text-slate-300">Sin registros</td></tr>';
+            }).join('') : '<tr><td colspan="3" class="p-8 text-center text-slate-300 italic">No hay registros</td></tr>';
         }
 
         async function deleteRow(id) {
@@ -385,9 +369,10 @@
         function toggleModoFestivos() {
             modoFestivos = !modoFestivos;
             currentUser = null;
-            document.getElementById('btnFestivos').className = modoFestivos ? 'mt-6 w-full py-3 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest' : 'mt-6 w-full py-3 border-2 border-red-100 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-widest';
-            document.getElementById('currentUserTitle').innerText = modoFestivos ? "FESTIVOS" : "Seleccione empleado";
+            document.getElementById('btnFestivos').className = modoFestivos ? 'mt-6 w-full py-4 bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest' : 'mt-6 w-full py-4 border-2 border-red-100 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest';
+            document.getElementById('currentUserTitle').innerText = modoFestivos ? "MODO FESTIVOS" : "Seleccione empleado";
             document.getElementById('historial').classList.toggle('hidden', !modoFestivos);
+            if(window.innerWidth < 768) toggleSidebar();
             renderUserList();
             renderTable();
         }

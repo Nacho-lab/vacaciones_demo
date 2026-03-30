@@ -19,10 +19,9 @@
             font-family: 'Inter', sans-serif; 
             background: #f8fafc; 
             overflow: hidden; 
-            touch-action: manipulation; /* Mejora respuesta táctil */
+            touch-action: manipulation;
         }
         
-        /* Ajustes de Calendario para mejor visualización en móvil */
         .fc-day-sun, .fc-day-sat { background-color: #fff1f2 !important; }
         .fc-event { 
             border: none !important; 
@@ -36,7 +35,6 @@
             color: white !important;
         }
         
-        /* Sidebar Responsive */
         #sidebar {
             transition: transform 0.3s ease-in-out;
             z-index: 100;
@@ -72,7 +70,6 @@
         .type-btn-active { @apply border-blue-600 bg-blue-50 ring-4 ring-blue-100; }
         .active-user { border-left: 4px solid #3b82f6; background: #eff6ff; }
         
-        /* Ajuste para que los días sean más clicables */
         .fc-daygrid-day { cursor: pointer; }
         .fc-daygrid-day:active { background-color: #f1f5f9; }
     </style>
@@ -230,7 +227,7 @@
                 height: 'auto',
                 selectable: true,
                 unselectAuto: false,
-                longPressDelay: 0, // CRÍTICO: Selección instantánea en móvil
+                longPressDelay: 0,
                 selectLongPressDelay: 0,
                 headerToolbar: isMobile ? { left: 'prev,next', center: 'title', right: '' } : false,
                 dayMaxEvents: isMobile ? 2 : true,
@@ -313,14 +310,22 @@
             document.getElementById('confirmActions').classList.add('hidden');
         }
 
+        // CORRECCIÓN DE FECHAS: Usar partes para evitar desfase de zona horaria
         async function confirmSave(factor) {
             const target = modoFestivos ? 'FESTIVO' : currentUser;
             const inserts = [], deletes = [], updates = [];
-            let current = new Date(selectedInfo.startStr + "T00:00:00");
-            let end = new Date(selectedInfo.endStr + "T00:00:00");
+            
+            // Interpretamos las fechas de FullCalendar que vienen como YYYY-MM-DD
+            let current = new Date(selectedInfo.startStr + "T12:00:00"); // Forzamos mediodía para evitar saltos de día por TZ
+            let end = new Date(selectedInfo.endStr + "T12:00:00");
 
             while(current < end) {
-                const dStr = current.toISOString().split('T')[0];
+                // Generamos string YYYY-MM-DD manual para asegurar consistencia
+                const y = current.getFullYear();
+                const m = String(current.getMonth() + 1).padStart(2, '0');
+                const d = String(current.getDate()).padStart(2, '0');
+                const dStr = `${y}-${m}-${d}`;
+                
                 const dayOfWeek = current.getDay();
                 if(modoFestivos || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
                     const existing = vacacionesData.find(v => v.empleado === target && v.fecha_inicio === dStr);

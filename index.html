@@ -8,6 +8,7 @@
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/animations/shift-away.css">
@@ -72,6 +73,11 @@
         
         .fc-daygrid-day { cursor: pointer; }
         .fc-daygrid-day:active { background-color: #f1f5f9; }
+
+        /* Estilos Panel Reporte */
+        #reportPanel {
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
     </style>
 </head>
 <body>
@@ -134,7 +140,13 @@
                         <button onclick="navYear(1)" class="p-2 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
                     </div>
                 </div>
-                <h3 id="currentUserTitle" class="font-black text-xs md:text-xl text-slate-800 uppercase italic truncate max-w-[140px] md:max-w-none">Seleccione empleado</h3>
+                
+                <div class="flex items-center gap-2">
+                    <h3 id="currentUserTitle" class="font-black text-xs md:text-xl text-slate-800 uppercase italic truncate max-w-[100px] md:max-w-none">Seleccione empleado</h3>
+                    <button id="btnOpenReport" onclick="openReport()" class="hidden p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 active:scale-90 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    </button>
+                </div>
             </header>
             
             <div class="flex-1 overflow-y-auto p-4 md:p-8">
@@ -176,12 +188,35 @@
         </div>
     </div>
 
+    <!-- Modal Reporte Analítico -->
+    <div id="reportPanel" class="fixed inset-0 bg-slate-50 z-[250] hidden flex-col">
+        <header class="bg-white border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+            <div>
+                <h2 id="reportUserName" class="text-2xl font-black text-slate-900 uppercase italic">Resumen</h2>
+                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">Análisis de Ausencias 2026</p>
+            </div>
+            <button onclick="closeReport()" class="p-4 bg-slate-100 rounded-2xl font-black text-xs uppercase active:scale-90 transition-all">Cerrar</button>
+        </header>
+        <div class="flex-1 overflow-y-auto p-6 space-y-8">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="reportStats">
+                <!-- Inyectado dinámicamente -->
+            </div>
+            <div class="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <h3 class="text-sm font-black text-slate-400 uppercase tracking-widest mb-6">Distribución por Tipo (Días)</h3>
+                <div class="h-[300px] w-full">
+                    <canvas id="reportChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const SUPABASE_URL = "https://ibsztkfrkumibvllxhqn.supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlic3p0a2Zya3VtaWJ2bGx4aHFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NzYxMTYsImV4cCI6MjA4NzQ1MjExNn0.igRwNr_mNV4NVWlo_DzpFZ3jbnMPvqmhlX7FRbs4bKs"; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let calendar, currentUser, selectedInfo, currentYear = 2026, vacacionesData = [], selectedType = null, modoFestivos = false;
+        let myChart = null;
 
         const employeeConfig = {
             "Raúl Villegas": { color: "#10b981", grupo: "admin" },
@@ -227,8 +262,6 @@
                 height: 'auto',
                 selectable: true,
                 unselectAuto: false,
-                longPressDelay: 0,
-                selectLongPressDelay: 0,
                 headerToolbar: isMobile ? { left: 'prev,next', center: 'title', right: '' } : false,
                 dayMaxEvents: isMobile ? 2 : true,
                 select: (info) => {
@@ -292,6 +325,7 @@
             currentUser = name;
             document.getElementById('currentUserTitle').innerText = name;
             document.getElementById('historial').classList.remove('hidden');
+            document.getElementById('btnOpenReport').classList.remove('hidden');
             if(window.innerWidth < 768) toggleSidebar();
             renderUserList();
             renderTable();
@@ -310,22 +344,14 @@
             document.getElementById('confirmActions').classList.add('hidden');
         }
 
-        // CORRECCIÓN DE FECHAS: Usar partes para evitar desfase de zona horaria
         async function confirmSave(factor) {
             const target = modoFestivos ? 'FESTIVO' : currentUser;
             const inserts = [], deletes = [], updates = [];
-            
-            // Interpretamos las fechas de FullCalendar que vienen como YYYY-MM-DD
-            let current = new Date(selectedInfo.startStr + "T12:00:00"); // Forzamos mediodía para evitar saltos de día por TZ
+            let current = new Date(selectedInfo.startStr + "T12:00:00");
             let end = new Date(selectedInfo.endStr + "T12:00:00");
 
             while(current < end) {
-                // Generamos string YYYY-MM-DD manual para asegurar consistencia
-                const y = current.getFullYear();
-                const m = String(current.getMonth() + 1).padStart(2, '0');
-                const d = String(current.getDate()).padStart(2, '0');
-                const dStr = `${y}-${m}-${d}`;
-                
+                const dStr = current.toISOString().split('T')[0];
                 const dayOfWeek = current.getDay();
                 if(modoFestivos || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
                     const existing = vacacionesData.find(v => v.empleado === target && v.fecha_inicio === dStr);
@@ -374,6 +400,7 @@
         function toggleModoFestivos() {
             modoFestivos = !modoFestivos;
             currentUser = null;
+            document.getElementById('btnOpenReport').classList.add('hidden');
             document.getElementById('btnFestivos').className = modoFestivos ? 'mt-6 w-full py-4 bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest' : 'mt-6 w-full py-4 border-2 border-red-100 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest';
             document.getElementById('currentUserTitle').innerText = modoFestivos ? "MODO FESTIVOS" : "Seleccione empleado";
             document.getElementById('historial').classList.toggle('hidden', !modoFestivos);
@@ -382,6 +409,50 @@
             renderTable();
         }
 
+        function openReport() {
+            if (!currentUser) return;
+            document.getElementById('reportUserName').innerText = currentUser;
+            document.getElementById('reportPanel').style.display = 'flex';
+            
+            const stats = { vacaciones: 0, baja: 0, curso: 0, otros: 0 };
+            vacacionesData.filter(v => v.empleado === currentUser && v.fecha_inicio.startsWith(currentYear))
+                .forEach(v => { stats[v.tipo || 'vacaciones'] += v.dias; });
+
+            const statsContainer = document.getElementById('reportStats');
+            statsContainer.innerHTML = Object.keys(stats).map(key => `
+                <div class="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">${key}</p>
+                    <p class="text-2xl font-black text-slate-900">${stats[key].toFixed(1)} <span class="text-xs text-slate-300">días</span></p>
+                </div>
+            `).join('');
+
+            if (myChart) myChart.destroy();
+            const ctx = document.getElementById('reportChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['VACACIONES', 'BAJAS', 'CURSOS', 'OTROS'],
+                    datasets: [{
+                        label: 'Días Consumidos',
+                        data: [stats.vacaciones, stats.baja, stats.curso, stats.otros],
+                        backgroundColor: [typeColors.vacaciones, typeColors.baja, typeColors.curso, typeColors.otros],
+                        borderRadius: 12,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { display: false }, ticks: { font: { weight: '800' } } },
+                        x: { grid: { display: false }, ticks: { font: { weight: '800', size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        function closeReport() { document.getElementById('reportPanel').style.display = 'none'; }
         function closeModal() { document.getElementById('modal').style.display = 'none'; calendar.unselect(); }
         function navYear(n) { currentYear += n; document.getElementById('displayYear').innerText = currentYear; calendar.gotoDate(`${currentYear}-01-01`); fetchData(); }
     </script>
